@@ -1,6 +1,9 @@
 """ツールのテスト（LLMもAPIキーも使わない）。"""
 
 import json
+from types import SimpleNamespace
+
+import pytest
 
 from app import tools
 
@@ -46,3 +49,31 @@ def test_default_question_of_lecture1_is_answerable_from_glossary():
     assert "3レベル" in DEFAULT_QUESTION
     hits = json.loads(tools.search_glossary("3レベル"))
     assert hits[0]["term"] == "宿題の3レベル"
+
+
+def test_ask_prints_input_and_output_token_counts(monkeypatch, capsys):
+    pytest.importorskip("google.genai")
+    from app import ask as ask_module
+
+    response = SimpleNamespace(
+        usage_metadata=SimpleNamespace(prompt_token_count=12, candidates_token_count=34),
+        text="回答",
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return response
+
+    class FakeClient:
+        models = FakeModels()
+
+        def __init__(self, api_key):
+            pass
+
+    monkeypatch.setattr(ask_module.genai, "Client", FakeClient)
+    monkeypatch.setattr(ask_module, "get_api_key", lambda: "test-key")
+
+    assert ask_module.ask("質問") == "回答"
+    output = capsys.readouterr().out
+    assert "入力トークン数: 12" in output
+    assert "出力トークン数: 34" in output
